@@ -3,7 +3,7 @@ services:
 - name: frontend
   source_dir: /frontend
   github:
-    repo: IBRAHIMawdall/D-pharmacist-saas
+    repo: IBRAHIMawdall/pharmacist-saas
     branch: main
   run_command: npm start
   environment_slug: node-js
@@ -18,7 +18,7 @@ services:
 - name: backend
   source_dir: /backend
   github:
-    repo: IBRAHIMawdall/D-pharmacist-saas
+    repo: IBRAHIMawdall/pharmacist-saas
     branch: main
   run_command: npm start
   environment_slug: node-js
