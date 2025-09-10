@@ -12,7 +12,7 @@ services:
   routes:
   - path: /
   envs:
-  - key: REACT_APP_API_URL
+  - key: REACT_APP_API_BASE
     value: ${backend.PUBLIC_URL}
 
 - name: backend

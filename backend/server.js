@@ -4,9 +4,22 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
+const { query, param, validationResult } = require('express-validator');
+const swaggerUi = require('swagger-ui-express');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Database connection
+const dbPath = __dirname + '/database/drugs_scalable.db';
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+  if (err) {
+    console.error('Error opening database', err.message);
+  } else {
+    console.log('Connected to the SQLite database.');
+  }
+});
 
 // Rate limiting
 const limiter = rateLimit({
@@ -21,151 +34,165 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(limiter);
 
-// Mock data - In production, this would come from a database
-const diagnoses = [
-  { code: 'E11.9', description: 'Type 2 diabetes mellitus without complications', category: 'Endocrine' },
-  { code: 'I10', description: 'Essential hypertension', category: 'Cardiovascular' },
-  { code: 'J44.1', description: 'Chronic obstructive pulmonary disease with acute exacerbation', category: 'Respiratory' },
-  { code: 'M79.3', description: 'Panniculitis, unspecified', category: 'Musculoskeletal' },
-  { code: 'F32.9', description: 'Major depressive disorder, single episode, unspecified', category: 'Mental Health' },
-  { code: 'K21.9', description: 'Gastro-esophageal reflux disease without esophagitis', category: 'Digestive' },
-  { code: 'N18.6', description: 'End stage renal disease', category: 'Genitourinary' },
-  { code: 'Z51.11', description: 'Encounter for antineoplastic chemotherapy', category: 'Factors' }
-];
+// Validation helper
+function handleValidation(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+  next();
+}
 
-const treatments = {
-  'E11.9': [
-    {
-      id: 1,
-      medication: 'Metformin',
-      dosage: '500mg twice daily',
-      duration: 'Long-term',
-      priority: 'high',
-      insuranceCovered: true,
-      requiresSpecialist: false,
-      evidenceLevel: 'A',
-      sideEffects: 'GI upset, lactic acidosis (rare)',
-      contraindications: 'Severe kidney disease, metabolic acidosis'
-    },
-    {
-      id: 2,
-      medication: 'Insulin glargine',
-      dosage: '10-20 units at bedtime',
-      duration: 'Long-term',
-      priority: 'medium',
-      insuranceCovered: true,
-      requiresSpecialist: true,
-      evidenceLevel: 'A',
-      sideEffects: 'Hypoglycemia, weight gain',
-      contraindications: 'Hypoglycemia'
-    }
+// Minimal OpenAPI spec for Swagger UI
+const openapiSpec = {
+  openapi: '3.0.0',
+  info: {
+    title: 'PharmAssist Pro API',
+    version: '1.0.0',
+    description: 'API for ICD-10 to Treatment Mapping',
+  },
+  servers: [
+    { url: `http://localhost:${PORT}` },
+    { url: 'https://pharmassist-pro-backend.onrender.com' },
   ],
-  'I10': [
-    {
-      id: 3,
-      medication: 'Lisinopril',
-      dosage: '10mg once daily',
-      duration: 'Long-term',
-      priority: 'high',
-      insuranceCovered: true,
-      requiresSpecialist: false,
-      evidenceLevel: 'A',
-      sideEffects: 'Dry cough, hyperkalemia',
-      contraindications: 'Pregnancy, angioedema history'
+  paths: {
+    '/health': {
+      get: {
+        summary: 'Health check',
+        responses: { '200': { description: 'OK' } }
+      }
     },
-    {
-      id: 4,
-      medication: 'Amlodipine',
-      dosage: '5mg once daily',
-      duration: 'Long-term',
-      priority: 'medium',
-      insuranceCovered: true,
-      requiresSpecialist: false,
-      evidenceLevel: 'A',
-      sideEffects: 'Peripheral edema, flushing',
-      contraindications: 'Severe aortic stenosis'
+    '/api/diagnoses': {
+      get: {
+        summary: 'List diagnoses',
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' }, required: false }
+        ],
+        responses: { '200': { description: 'List of diagnoses' } }
+      }
+    },
+    '/api/treatments/{diagnosisCode}': {
+      get: {
+        summary: 'List treatments for a diagnosis',
+        parameters: [
+          { name: 'diagnosisCode', in: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: { '200': { description: 'List of treatments' }, '404': { description: 'Diagnosis not found' } }
+      }
+    },
+    '/api/export/{diagnosisCode}': {
+      get: {
+        summary: 'Export diagnosis and treatments',
+        parameters: [
+          { name: 'diagnosisCode', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'format', in: 'query', required: false, schema: { type: 'string', enum: ['json', 'csv'] } }
+        ],
+        responses: { '200': { description: 'Exported file' }, '404': { description: 'Diagnosis not found' } }
+      }
     }
-  ]
+  }
 };
+
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
 // Routes
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  db.get('SELECT name FROM sqlite_master', (err) => {
+    const dbStatus = err ? 'disconnected' : 'connected';
+    res.json({ status: 'OK', timestamp: new Date().toISOString(), db: dbStatus });
+  });
 });
 
-app.get('/api/diagnoses', (req, res) => {
+app.get(
+  '/api/diagnoses',
+  [query('search').optional().isString().trim().isLength({ max: 200 })],
+  handleValidation,
+  (req, res) => {
   const { search } = req.query;
-  let filteredDiagnoses = diagnoses;
-  
+  let sql = `SELECT icd10_code as code, description, category FROM icd10`;
+  const params = [];
   if (search) {
-    const searchLower = search.toLowerCase();
-    filteredDiagnoses = diagnoses.filter(diagnosis => 
-      diagnosis.code.toLowerCase().includes(searchLower) ||
-      diagnosis.description.toLowerCase().includes(searchLower) ||
-      diagnosis.category.toLowerCase().includes(searchLower)
-    );
+    sql += ` WHERE icd10_code LIKE ? OR description LIKE ? OR category LIKE ?`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  
-  res.json(filteredDiagnoses);
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
 });
 
-app.get('/api/treatments/:diagnosisCode', (req, res) => {
+app.get(
+  '/api/treatments/:diagnosisCode',
+  [param('diagnosisCode').isString().trim().isLength({ min: 1, max: 20 })],
+  handleValidation,
+  (req, res) => {
   const { diagnosisCode } = req.params;
-  const diagnosisTreatments = treatments[diagnosisCode] || [];
-  
-  res.json(diagnosisTreatments);
+  const sql = `SELECT * FROM treatments WHERE icd10_code = ?`;
+  db.all(sql, [diagnosisCode], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
 });
 
-app.get('/api/export/:diagnosisCode', (req, res) => {
+app.get(
+  '/api/export/:diagnosisCode',
+  [
+    param('diagnosisCode').isString().trim().isLength({ min: 1, max: 20 }),
+    query('format').optional().isIn(['json', 'csv'])
+  ],
+  handleValidation,
+  (req, res) => {
   const { diagnosisCode } = req.params;
   const { format } = req.query;
   
-  const diagnosis = diagnoses.find(d => d.code === diagnosisCode);
-  const diagnosisTreatments = treatments[diagnosisCode] || [];
-  
-  if (!diagnosis) {
-    return res.status(404).json({ error: 'Diagnosis not found' });
-  }
-  
-  const exportData = {
-    diagnosis,
-    treatments: diagnosisTreatments,
-    exportedAt: new Date().toISOString()
-  };
-  
-  if (format === 'csv') {
-    // Simple CSV format
-    let csv = 'Diagnosis Code,Description,Category,Medication,Dosage,Duration,Priority,Insurance Covered,Requires Specialist,Evidence Level\n';
-    
-    diagnosisTreatments.forEach(treatment => {
-      csv += `${diagnosis.code},"${diagnosis.description}",${diagnosis.category},"${treatment.medication}","${treatment.dosage}","${treatment.duration}",${treatment.priority},${treatment.insuranceCovered},${treatment.requiresSpecialist},${treatment.evidenceLevel}\n`;
+  const diagnosisSql = `SELECT icd10_code as code, description, category FROM icd10 WHERE icd10_code = ?`;
+  db.get(diagnosisSql, [diagnosisCode], (err, diagnosis) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!diagnosis) {
+      res.status(404).json({ error: 'Diagnosis not found' });
+      return;
+    }
+
+    const treatmentsSql = `SELECT * FROM treatments WHERE icd10_code = ?`;
+    db.all(treatmentsSql, [diagnosisCode], (err, treatments) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      const exportData = {
+        diagnosis,
+        treatments: treatments,
+        exportedAt: new Date().toISOString()
+      };
+      
+      if (format === 'csv') {
+        // Simple CSV format
+        let csv = 'Diagnosis Code,Description,Category,Medication,Dosage,Duration,Priority,Insurance Covered,Requires Specialist,Evidence Level\n';
+        
+        treatments.forEach(treatment => {
+          csv += `${diagnosis.code},"${diagnosis.description}",${diagnosis.category},"${treatment.medication}","${treatment.dosage}","${treatment.duration}",${treatment.priority},${treatment.insuranceCovered},${treatment.requiresSpecialist},${treatment.evidenceLevel}\n`;
+        });
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${diagnosisCode}_treatments.csv"`);
+        res.send(csv);
+      } else {
+        // JSON format
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${diagnosisCode}_treatments.json"`);
+        res.json(exportData);
+      }
     });
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="${diagnosisCode}_treatments.csv"`);
-    res.send(csv);
-  } else {
-    // JSON format
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="${diagnosisCode}_treatments.json"`);
-    res.json(exportData);
-  }
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-});
-
-module.exports = app;
+  });
+}
+)
