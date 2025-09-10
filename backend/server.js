@@ -196,3 +196,7 @@ app.get(
   });
 }
 )
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the PharmAssist Pro API!' });
+});
