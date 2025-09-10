@@ -3,7 +3,7 @@ services:
     name: pharmacist-saas-backend
     env: node
     plan: free
-    buildCommand: "cd backend && npm install && npm rebuild sqlite3"
+    buildCommand: "cd backend && npm install && npx node-pre-gyp install --fallback-to-build --update-binary"
     startCommand: "node backend/server.js"
     envVars:
       - key: NODE_ENV
