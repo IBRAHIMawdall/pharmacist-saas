@@ -7,6 +7,7 @@ require('dotenv').config();
 const { query, param, validationResult } = require('express-validator');
 const swaggerUi = require('swagger-ui-express');
 const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -197,6 +198,12 @@ app.get(
 }
 )
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to the PharmAssist Pro API!' });
+// Serve frontend for any path that is not an API call
+app.use(express.static(path.join(__dirname, '..', 'frontend', 'build')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'frontend', 'build', 'index.html'));
+});
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });

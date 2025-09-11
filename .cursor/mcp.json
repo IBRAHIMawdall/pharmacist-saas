@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "genkit": {
+      "command": "genkit",
+      "args": ["mcp"],
+      "cwd": "d:\\pharmacist-saas\\my-genkit-app",
+      "timeout": 30000,
+      "trust": true
+    }
+  }
+}

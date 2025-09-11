@@ -8,6 +8,9 @@
     }
   ],
   "routes": [
+    { "src": "/api/(.*)", "dest": "https://pharmassist-pro-backend.onrender.com/api/$1" },
+    { "src": "/docs", "dest": "https://pharmassist-pro-backend.onrender.com/docs" },
+    { "src": "/health", "dest": "https://pharmassist-pro-backend.onrender.com/health" },
     { "src": "/(.*)", "dest": "frontend/build/$1" }
   ]
 }

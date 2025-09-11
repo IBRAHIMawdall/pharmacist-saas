@@ -1,0 +1,24 @@
+{
+  "name": "my-genkit-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "genkit": "genkit",
+    "genkit:dev": "genkit start --dev",
+    "genkit:mcp": "genkit mcp"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@genkit-ai/google-genai": "^1.19.2",
+    "dotenv": "^17.2.2",
+    "genkit": "^1.19.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,19 +1,12 @@
-services:
-  - type: web
-    name: pharmacist-saas-backend
-    env: node
-    plan: free
-    buildCommand: "cd backend && npm install && npx node-pre-gyp install --fallback-to-build --update-binary"
-    startCommand: "node backend/server.js"
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pharmacist-saas-db
-          property: connectionString
-
-databases:
-  - name: pharmacist-saas-db
-    databaseName: pharmacist_saas_db
-    plan: free
+services: 
+  - type: web 
+    name: pharmacist-saas 
+    env: node 
+    plan: free 
+    buildCommand: "npm install --prefix frontend && npm run build --prefix frontend && npm install --prefix backend --only=production" 
+    startCommand: "node backend/server.js" 
+    envVars: 
+      - key: NODE_ENV 
+        value: production 
+      - key: PORT 
+        value: 3003 
